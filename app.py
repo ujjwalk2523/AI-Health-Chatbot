@@ -1,3 +1,5 @@
+# Copyright (c) 2025 Ujjwal Kumar
+# Licensed under the MIT License. See LICENSE file in the project root for details.
 import re
 import random
 import pandas as pd
