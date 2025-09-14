@@ -1,5 +1,3 @@
-# Copyright (c) 2025 Ujjwal Kumar
-# Licensed under the MIT License. See LICENSE file in the project root for details.
 import re
 import random
 import pandas as pd
@@ -77,20 +75,30 @@ def train_model(training):
     model.fit(x_train, y_train)
     return model, le, cols
 
-# ------------------ Symptom Synonyms (auto-expanded) ------------------
+# ------------------ App UI ------------------
+st.title("🤖 AI Health Chatbot (Web)")
+st.write("Enter your basic info and symptoms. The model will suggest a likely condition and precautions. This is for informational purposes only — not a substitute for professional medical advice.")
+
+with st.spinner("Loading data and preparing model..."):
+    try:
+        training, testing = load_data()
+    except Exception as e:
+        st.error(f"Error loading Data CSVs: {e}")
+        st.stop()
+
+    description_list, severityDictionary, precautionDictionary = load_master_files()
+    model, le, cols = train_model(training)
 # ------------------ Symptom Synonyms (auto-expanded) ------------------
 symptom_synonyms = {}
 
 def add_synonyms(base_text, original_symptom, variants):
-    """Helper to map multiple human-readable variants to the same symptom key."""
     for v in variants:
         symptom_synonyms[v.lower()] = original_symptom
 
-for s in cols:  # cols is now available ✅
+for s in cols:
     human_text = s.replace("_", " ").lower()
     symptom_synonyms[human_text] = s
 
-    # Common synonym patterns
     if "pain" in human_text:
         add_synonyms(human_text, s, [
             human_text.replace("pain", "ache"),
@@ -99,23 +107,15 @@ for s in cols:  # cols is now available ✅
             "ache", "hurting", "painful"
         ])
     if "fever" in human_text:
-        add_synonyms(human_text, s, [
-            "temperature", "high temperature", "pyrexia", "feverish"
-        ])
+        add_synonyms(human_text, s, ["temperature", "high temperature", "pyrexia", "feverish"])
     if "cough" in human_text:
-        add_synonyms(human_text, s, [
-            "coughing", "dry cough", "wet cough", "continuous cough"
-        ])
+        add_synonyms(human_text, s, ["coughing", "dry cough", "wet cough", "continuous cough"])
     if "diarrhea" in human_text:
-        add_synonyms(human_text, s, [
-            "loose motion", "motions", "loose stools", "runny tummy"
-        ])
+        add_synonyms(human_text, s, ["loose motion", "motions", "loose stools", "runny tummy"])
     if "chills" in human_text:
         add_synonyms(human_text, s, ["cold", "shivering"])
     if "breathlessness" in human_text or "shortness of breath" in human_text:
-        add_synonyms(human_text, s, [
-            "breathing issue", "difficulty breathing", "breath short", "breath problem"
-        ])
+        add_synonyms(human_text, s, ["breathing issue", "difficulty breathing", "breath short", "breath problem"])
     if "vomit" in human_text:
         add_synonyms(human_text, s, ["throwing up", "puking", "nausea"])
     if "headache" in human_text or "head ache" in human_text:
@@ -134,7 +134,6 @@ for s in cols:  # cols is now available ✅
         add_synonyms(human_text, s, ["sadness", "low mood", "feeling down"])
     if "itch" in human_text:
         add_synonyms(human_text, s, ["pruritus", "skin irritation", "itching"])
-
 
 def extract_symptoms(user_input, all_symptoms):
     extracted = []
@@ -172,25 +171,11 @@ def predict_disease(symptoms_list, symptoms_dict, model, le, feature_columns):
     confidence = round(pred_proba[pred_class] * 100, 2)
     return disease, confidence, pred_proba
 
-# ------------------ App UI ------------------
-st.title("🤖 AI Health Chatbot (Web)")
-st.write("Enter your basic info and symptoms. The model will suggest a likely condition and precautions. This is for informational purposes only — not a substitute for professional medical advice.")
-
-with st.spinner("Loading data and preparing model..."):
-    try:
-        training, testing = load_data()
-    except Exception as e:
-        st.error(f"Error loading Data CSVs: {e}")
-        st.stop()
-
-    description_list, severityDictionary, precautionDictionary = load_master_files()
-    model, le, cols = train_model(training)
-
+# ------------------ User Input ------------------
 st.info(f"✅ Training data loaded: {training.shape[0]} rows × {training.shape[1]} columns. Features: {len(cols)}")
 
 symptoms_dict = {symptom: idx for idx, symptom in enumerate(cols)}
 
-# ------------------ User Input ------------------
 col1, col2 = st.columns(2)
 with col1:
     name = st.text_input("👉 What is your name?")
@@ -220,32 +205,15 @@ if detect_btn:
     else:
         st.success(f"✅ Detected symptoms: {', '.join(detected)}")
 
-        # Immediate prediction
         disease2, confidence2, proba2 = predict_disease(detected, symptoms_dict, model, le, cols)
         st.session_state.final_prediction = (disease2, confidence2, proba2)
 
-        # Collect extra info
         with st.form(key="follow_up_form"):
-            num_days = st.number_input(
-                "👉 For how many days have you had these symptoms?", 
-                min_value=0, max_value=365, value=1
-            )
-            severity_scale = st.slider(
-                "👉 On a scale of 1–10, how severe do you feel your condition is?", 
-                1, 10, 5
-            )
-            pre_exist = st.text_input(
-                "👉 Do you have any pre-existing conditions (e.g., diabetes, hypertension)?",
-                placeholder="Type 'None' if no condition"
-            )
-            lifestyle = st.text_input(
-                "👉 Do you smoke, drink alcohol, or have irregular sleep?",
-                placeholder="Type 'None' if no lifestyle issues"
-            )
-            family = st.text_input(
-                "👉 Any family history of similar illness?",
-                placeholder="Type 'None' if no family history"
-            )
+            num_days = st.number_input("👉 For how many days have you had these symptoms?", min_value=0, max_value=365, value=1)
+            severity_scale = st.slider("👉 On a scale of 1–10, how severe do you feel your condition is?", 1, 10, 5)
+            pre_exist = st.text_input("👉 Do you have any pre-existing conditions (e.g., diabetes, hypertension)?", placeholder="Type 'None' if no condition")
+            lifestyle = st.text_input("👉 Do you smoke, drink alcohol, or have irregular sleep?", placeholder="Type 'None' if no lifestyle issues")
+            family = st.text_input("👉 Any family history of similar illness?", placeholder="Type 'None' if no family history")
             submit_followup = st.form_submit_button("✅ Update info (optional)")
 
         if submit_followup:
@@ -262,7 +230,7 @@ if st.session_state.final_prediction:
     disease2, confidence2, proba2 = st.session_state.final_prediction
     st.markdown("## 🏁 Final Result")
     st.write(f"🩺 **Based on your answers, you may have:** **{disease2}**")
-    #st.write(f"🔎 **Confidence:** {confidence2}%")
+    # Confidence hidden on purpose
     st.write(f"📋 **Detected symptoms used:** {', '.join(st.session_state.detected)}")
     st.write(f"📖 **About:** {description_list.get(disease2, 'No description available.')}")
 
@@ -271,7 +239,6 @@ if st.session_state.final_prediction:
         for i, prec in enumerate(precautionDictionary[disease2], 1):
             st.write(f"{i}. {prec}")
 
-    # Show extra info if provided
     if st.session_state.extra_info:
         st.write("📝 **Your extra details:**")
         for k, v in st.session_state.extra_info.items():
