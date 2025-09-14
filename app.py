@@ -75,23 +75,64 @@ def train_model(training):
     model.fit(x_train, y_train)
     return model, le, cols
 
-# ------------------ Symptom extractor & prediction ------------------
-symptom_synonyms = {
-    "stomach ache": "stomach_pain",
-    "belly pain": "stomach_pain",
-    "tummy pain": "stomach_pain",
-    "loose motion": "diarrhea",
-    "motions": "diarrhea",
-    "high temperature": "fever",
-    "temperature": "fever",
-    "feaver": "fever",
-    "coughing": "cough",
-    "throat pain": "sore_throat",
-    "cold": "chills",
-    "breathing issue": "breathlessness",
-    "shortness of breath": "breathlessness",
-    "body ache": "muscle_pain",
-}
+# ------------------ Symptom Synonyms (auto-expanded) ------------------
+# ------------------ Symptom Synonyms (auto-expanded) ------------------
+symptom_synonyms = {}
+
+def add_synonyms(base_text, original_symptom, variants):
+    """Helper to map multiple human-readable variants to the same symptom key."""
+    for v in variants:
+        symptom_synonyms[v.lower()] = original_symptom
+
+for s in cols:  # cols is now available ✅
+    human_text = s.replace("_", " ").lower()
+    symptom_synonyms[human_text] = s
+
+    # Common synonym patterns
+    if "pain" in human_text:
+        add_synonyms(human_text, s, [
+            human_text.replace("pain", "ache"),
+            human_text.replace("pain", "discomfort"),
+            human_text.replace("pain", "soreness"),
+            "ache", "hurting", "painful"
+        ])
+    if "fever" in human_text:
+        add_synonyms(human_text, s, [
+            "temperature", "high temperature", "pyrexia", "feverish"
+        ])
+    if "cough" in human_text:
+        add_synonyms(human_text, s, [
+            "coughing", "dry cough", "wet cough", "continuous cough"
+        ])
+    if "diarrhea" in human_text:
+        add_synonyms(human_text, s, [
+            "loose motion", "motions", "loose stools", "runny tummy"
+        ])
+    if "chills" in human_text:
+        add_synonyms(human_text, s, ["cold", "shivering"])
+    if "breathlessness" in human_text or "shortness of breath" in human_text:
+        add_synonyms(human_text, s, [
+            "breathing issue", "difficulty breathing", "breath short", "breath problem"
+        ])
+    if "vomit" in human_text:
+        add_synonyms(human_text, s, ["throwing up", "puking", "nausea"])
+    if "headache" in human_text or "head ache" in human_text:
+        add_synonyms(human_text, s, ["head pain", "migraine"])
+    if "fatigue" in human_text:
+        add_synonyms(human_text, s, ["tiredness", "exhaustion", "weakness", "low energy"])
+    if "sore throat" in human_text or "throat" in human_text:
+        add_synonyms(human_text, s, ["throat pain", "throat irritation", "pharyngitis"])
+    if "runny nose" in human_text or "nasal" in human_text:
+        add_synonyms(human_text, s, ["blocked nose", "stuffy nose", "congestion"])
+    if "rash" in human_text:
+        add_synonyms(human_text, s, ["skin eruption", "spots", "skin patches"])
+    if "anxiety" in human_text:
+        add_synonyms(human_text, s, ["nervousness", "worry", "restlessness"])
+    if "depression" in human_text:
+        add_synonyms(human_text, s, ["sadness", "low mood", "feeling down"])
+    if "itch" in human_text:
+        add_synonyms(human_text, s, ["pruritus", "skin irritation", "itching"])
+
 
 def extract_symptoms(user_input, all_symptoms):
     extracted = []
@@ -219,7 +260,7 @@ if st.session_state.final_prediction:
     disease2, confidence2, proba2 = st.session_state.final_prediction
     st.markdown("## 🏁 Final Result")
     st.write(f"🩺 **Based on your answers, you may have:** **{disease2}**")
-    st.write(f"🔎 **Confidence:** {confidence2}%")
+    #st.write(f"🔎 **Confidence:** {confidence2}%")
     st.write(f"📋 **Detected symptoms used:** {', '.join(st.session_state.detected)}")
     st.write(f"📖 **About:** {description_list.get(disease2, 'No description available.')}")
 
