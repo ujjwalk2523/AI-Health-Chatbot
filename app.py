@@ -11,9 +11,13 @@ from difflib import get_close_matches
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
+# ------------------ Streamlit Setup ------------------
 st.set_page_config(page_title="AI Health Chatbot", layout="centered")
+st.title("🤖 AI Health Chatbot (Web)")
+st.write("Enter your basic info and symptoms. The model will suggest a likely condition and precautions. "
+         "This is for informational purposes only — not a substitute for professional medical advice.")
 
-# ------------------ Utility: cached loaders & model training ------------------
+# ------------------ Load Data ------------------
 @st.cache_data(ttl=3600)
 def load_data():
     training = pd.read_csv('Data/Training.csv')
@@ -21,6 +25,7 @@ def load_data():
 
     training.columns = training.columns.str.replace(r"\.\d+$", "", regex=True)
     testing.columns = testing.columns.str.replace(r"\.\d+$", "", regex=True)
+
     training = training.loc[:, ~training.columns.duplicated()]
     testing = testing.loc[:, ~testing.columns.duplicated()]
 
@@ -69,16 +74,15 @@ def train_model(training):
     le = preprocessing.LabelEncoder()
     y_encoded = le.fit_transform(y)
 
-    x_train, x_test, y_train, y_test = train_test_split(x, y_encoded, test_size=0.33, random_state=42)
+    x_train, x_test, y_train, y_test = train_test_split(
+        x, y_encoded, test_size=0.33, random_state=42
+    )
 
     model = RandomForestClassifier(n_estimators=300, random_state=42)
     model.fit(x_train, y_train)
     return model, le, cols
 
-# ------------------ App UI ------------------
-st.title("🤖 AI Health Chatbot (Web)")
-st.write("Enter your basic info and symptoms. The model will suggest a likely condition and precautions. This is for informational purposes only — not a substitute for professional medical advice.")
-
+# ------------------ Load Everything ------------------
 with st.spinner("Loading data and preparing model..."):
     try:
         training, testing = load_data()
@@ -88,65 +92,92 @@ with st.spinner("Loading data and preparing model..."):
 
     description_list, severityDictionary, precautionDictionary = load_master_files()
     model, le, cols = train_model(training)
-# ------------------ Symptom Synonyms (auto-expanded) ------------------
+
+# ------------------ Symptom Synonyms ------------------
 symptom_synonyms = {}
 
 def add_synonyms(base_text, original_symptom, variants):
+    """Map synonyms + plurals safely"""
+    base = base_text.lower()
+    symptom_synonyms[base] = original_symptom
+    symptom_synonyms[base + "s"] = original_symptom
     for v in variants:
-        symptom_synonyms[v.lower()] = original_symptom
+        v = v.lower()
+        symptom_synonyms[v] = original_symptom
+        symptom_synonyms[v + "s"] = original_symptom
 
 for s in cols:
     human_text = s.replace("_", " ").lower()
-    symptom_synonyms[human_text] = s
+    add_synonyms(human_text, s, [])
 
     if "pain" in human_text:
-        add_synonyms(human_text, s, [
-            human_text.replace("pain", "ache"),
-            human_text.replace("pain", "discomfort"),
-            human_text.replace("pain", "soreness"),
-            "ache", "hurting", "painful"
-        ])
-    if "fever" in human_text:
-        add_synonyms(human_text, s, ["temperature", "high temperature", "pyrexia", "feverish"])
-    if "cough" in human_text:
-        add_synonyms(human_text, s, ["coughing", "dry cough", "wet cough", "continuous cough"])
-    if "diarrhea" in human_text:
-        add_synonyms(human_text, s, ["loose motion", "motions", "loose stools", "runny tummy"])
-    if "chills" in human_text:
-        add_synonyms(human_text, s, ["cold", "shivering"])
-    if "breathlessness" in human_text or "shortness of breath" in human_text:
-        add_synonyms(human_text, s, ["breathing issue", "difficulty breathing", "breath short", "breath problem"])
-    if "vomit" in human_text:
-        add_synonyms(human_text, s, ["throwing up", "puking", "nausea"])
-    if "headache" in human_text or "head ache" in human_text:
-        add_synonyms(human_text, s, ["head pain", "migraine"])
-    if "fatigue" in human_text:
-        add_synonyms(human_text, s, ["tiredness", "exhaustion", "weakness", "low energy"])
-    if "sore throat" in human_text or "throat" in human_text:
-        add_synonyms(human_text, s, ["throat pain", "throat irritation", "pharyngitis"])
-    if "runny nose" in human_text or "nasal" in human_text:
-        add_synonyms(human_text, s, ["blocked nose", "stuffy nose", "congestion"])
-    if "rash" in human_text:
-        add_synonyms(human_text, s, ["skin eruption", "spots", "skin patches"])
-    if "anxiety" in human_text:
-        add_synonyms(human_text, s, ["nervousness", "worry", "restlessness"])
-    if "depression" in human_text:
-        add_synonyms(human_text, s, ["sadness", "low mood", "feeling down"])
-    if "itch" in human_text:
-        add_synonyms(human_text, s, ["pruritus", "skin irritation", "itching"])
+        add_synonyms(human_text, s, ["ache", "discomfort", "soreness", "hurting", "painful"])
 
+    if "fever" in human_text:
+        add_synonyms(human_text, s, ["fever", "temperature", "high temperature", "pyrexia", "feverish"])
+
+    if "cough" in human_text:
+        add_synonyms(human_text, s, ["cough", "coughing", "dry cough", "wet cough", "continuous cough"])
+
+    if "diarrhea" in human_text:
+        add_synonyms(human_text, s, ["diarrhea", "loose motion", "motions", "loose stools", "runny tummy"])
+
+    if "chills" in human_text:
+        add_synonyms(human_text, s, ["chill", "cold", "shivering"])
+
+    if "breathlessness" in human_text or "shortness of breath" in human_text:
+        add_synonyms(human_text, s, [
+            "breathlessness", "shortness of breath", "breathing issue",
+            "difficulty breathing", "breath short", "breath problem"
+        ])
+
+    if "vomit" in human_text:
+        add_synonyms(human_text, s, ["vomit", "vomiting", "throwing up", "puking", "nausea"])
+
+    if "headache" in human_text or "head ache" in human_text:
+        add_synonyms(human_text, s, ["headache", "head pain", "migraine"])
+
+    if "fatigue" in human_text:
+        add_synonyms(human_text, s, ["fatigue", "tiredness", "exhaustion", "weakness", "low energy"])
+
+    if "sore throat" in human_text or "throat" in human_text:
+        add_synonyms(human_text, s, ["sore throat", "throat pain", "throat irritation", "pharyngitis"])
+
+    if "runny nose" in human_text or "nasal" in human_text:
+        add_synonyms(human_text, s, ["runny nose", "nasal congestion", "blocked nose", "stuffy nose", "congestion"])
+
+    if "rash" in human_text:
+        add_synonyms(human_text, s, ["rash", "skin eruption", "spots", "skin patches", "acne"])
+
+    if "anxiety" in human_text:
+        add_synonyms(human_text, s, ["anxiety", "nervousness", "worry", "restlessness"])
+
+    if "depression" in human_text:
+        add_synonyms(human_text, s, ["depression", "sadness", "low mood", "feeling down"])
+
+    if "itch" in human_text:
+        add_synonyms(human_text, s, ["itch", "itching", "pruritus", "skin irritation"])
+
+# ------------------ Symptom Extraction ------------------
 def extract_symptoms(user_input, all_symptoms):
     extracted = []
+    debug_matches = []  # store match info
     text = str(user_input).lower().replace("-", " ")
 
+    # Regex word boundary match with synonyms
     for phrase, mapped in symptom_synonyms.items():
-        if phrase in text:
+        if re.search(rf"\b{re.escape(phrase)}\b", text):
             extracted.append(mapped)
+            debug_matches.append(f"Matched '{phrase}' → {mapped}")
 
+    # Direct dataset symptom name match
     for symptom in all_symptoms:
-        if symptom.replace("_", " ") in text:
+        human_sym = symptom.replace("_", " ")
+        if re.search(rf"\b{re.escape(human_sym)}\b", text):
             extracted.append(symptom)
+            debug_matches.append(f"Matched dataset name '{human_sym}' → {symptom}")
 
+    # Close matches for typos
     words = re.findall(r"\w+", text)
     all_symptom_words = [s.replace("_", " ") for s in all_symptoms]
     for word in words:
@@ -155,9 +186,11 @@ def extract_symptoms(user_input, all_symptoms):
             for sym in all_symptoms:
                 if sym.replace("_", " ") == close[0]:
                     extracted.append(sym)
+                    debug_matches.append(f"Close match '{word}' ≈ '{close[0]}' → {sym}")
 
-    return list(set(extracted))
+    return list(set(extracted)), debug_matches
 
+# ------------------ Prediction ------------------
 def predict_disease(symptoms_list, symptoms_dict, model, le, feature_columns):
     input_vector = np.zeros(len(symptoms_dict))
     for symptom in symptoms_list:
@@ -171,7 +204,7 @@ def predict_disease(symptoms_list, symptoms_dict, model, le, feature_columns):
     confidence = round(pred_proba[pred_class] * 100, 2)
     return disease, confidence, pred_proba
 
-# ------------------ User Input ------------------
+# ------------------ UI Input ------------------
 st.info(f"✅ Training data loaded: {training.shape[0]} rows × {training.shape[1]} columns. Features: {len(cols)}")
 
 symptoms_dict = {symptom: idx for idx, symptom in enumerate(cols)}
@@ -185,7 +218,6 @@ with col2:
 gender = st.selectbox("👉 What is your gender?", options=["Prefer not to say", "Male", "Female", "Other"])
 
 symptoms_input = st.text_area("👉 Describe your symptoms in a sentence (e.g., 'I have fever and stomach pain')", height=100)
-
 detect_btn = st.button("🔎 Detect Symptoms")
 
 if "detected" not in st.session_state:
@@ -194,11 +226,14 @@ if "final_prediction" not in st.session_state:
     st.session_state.final_prediction = None
 if "extra_info" not in st.session_state:
     st.session_state.extra_info = {}
+if "debug_matches" not in st.session_state:
+    st.session_state.debug_matches = []
 
 # ------------------ Detect & Predict ------------------
 if detect_btn:
-    detected = extract_symptoms(symptoms_input, cols)
+    detected, debug_matches = extract_symptoms(symptoms_input, cols)
     st.session_state.detected = detected
+    st.session_state.debug_matches = debug_matches
 
     if not detected:
         st.error("❌ Sorry, I could not detect valid symptoms. Please try again with more specific symptoms (e.g., 'fever and cough').")
@@ -225,12 +260,19 @@ if detect_btn:
                 "family": family
             }
 
+    # 🐞 Debug Panel
+    with st.expander("🐞 Debug: See how symptoms were matched"):
+        if st.session_state.debug_matches:
+            for m in st.session_state.debug_matches:
+                st.write(m)
+        else:
+            st.write("No matches found.")
+
 # ------------------ Show Results ------------------
 if st.session_state.final_prediction:
     disease2, confidence2, proba2 = st.session_state.final_prediction
     st.markdown("## 🏁 Final Result")
     st.write(f"🩺 **Based on your answers, you may have:** **{disease2}**")
-    # Confidence hidden on purpose
     st.write(f"📋 **Detected symptoms used:** {', '.join(st.session_state.detected)}")
     st.write(f"📖 **About:** {description_list.get(disease2, 'No description available.')}")
 
